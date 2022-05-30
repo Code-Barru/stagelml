@@ -1,5 +1,3 @@
-from numpy import average
-import sklearn
 from sklearn.metrics import f1_score
 import torch
 from torch import nn
@@ -82,9 +80,8 @@ def test(dataloader, model, loss_fn, classes):
     model.eval()
     test_loss, correct = 0, 0
 
-    actual = [0 for _ in range(0,len(classes))]
-    predicted = [0 for _ in range(0,len(classes))]
-
+    actual = []
+    predicted = []
 
     with torch.no_grad():
         for X, y in dataloader:
@@ -92,8 +89,8 @@ def test(dataloader, model, loss_fn, classes):
             X, y = X.to(device), y.to(device)
             pred = model(X)
 
-            actual[y[0]] += 1
-            predicted[pred[0].argmax(0)] += 1
+            actual.append(y[0])
+            predicted.append(pred[0].argmax(0))
 
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
@@ -106,7 +103,7 @@ def test(dataloader, model, loss_fn, classes):
 
     test_loss /= num_batches
     correct /= size
-    return 100*correct, test_loss, sklearn.metrics.f1_score(actual, predicted,average="macro")
+    return 100*correct, test_loss, f1_score(actual, predicted,average="macro")
 
 def train_epochs(epochs, save_name,classes):
     writer = SummaryWriter()
