@@ -72,7 +72,7 @@ def train(dataloader, model, loss_fn, optimizer):
 
         if batch % 100 == 0:
             loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            print(f"batch [{current:>5d}/{size:>5d}]")
 
 def test(dataloader, model, loss_fn, classes):
     size = len(dataloader.dataset)
@@ -90,7 +90,7 @@ def test(dataloader, model, loss_fn, classes):
             pred = model(X)
 
             actual.append(y)
-            predicted.append(pred[0])
+            predicted.append(pred.argmax(1))
 
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
@@ -98,8 +98,8 @@ def test(dataloader, model, loss_fn, classes):
             # print("test0 :",classes[pred[0].argmax(0)])
             # print("test1 :",classes[y[0]], "\n")
 
-    actual = torch.cat(actual)
-    predicted = torch.cat(predicted)
+    actual = torch.cat(actual).cpu()
+    predicted = torch.cat(predicted).cpu()
 
     test_loss /= num_batches
     correct /= size
