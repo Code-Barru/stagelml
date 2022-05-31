@@ -89,17 +89,17 @@ def test(dataloader, model, loss_fn, classes):
             X, y = X.to(device), y.to(device)
             pred = model(X)
 
-            actual.append(y[0])
-            predicted.append(pred[0].argmax(0))
+            actual.append(y)
+            predicted.append(pred[0])
 
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
             
             # print("test0 :",classes[pred[0].argmax(0)])
             # print("test1 :",classes[y[0]], "\n")
-            
-            # print(actual)
-            # print(predicted)
+
+    actual = torch.cat(actual)
+    predicted = torch.cat(predicted)
 
     test_loss /= num_batches
     correct /= size
@@ -114,8 +114,7 @@ def train_epochs(epochs, save_name,classes):
         
         writer.add_scalar("Accuracy/train",accuracy, t+1)
         writer.add_scalar("Loss/train", loss, t+1)
-        writer.add_scalar("F1-score",f1_score,t+1)
-        print("f1 :",f1_score)
+        writer.add_scalar("F1-score/train",f1_score,t+1)
         #print(f"Test Error:\n Accuracy: {(accuracy):>0.1f}%, Avg loss: {loss:>8f} \n")
 
     writer.flush()
