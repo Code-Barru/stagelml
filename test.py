@@ -155,5 +155,5 @@ classes = [
 "Ankle boot",
 ]
 
-train_epochs(250, "model.pth",classes)
+train_epochs(50, "model.pth",classes)
 test_model("model.pth", classes)
