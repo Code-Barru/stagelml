@@ -44,18 +44,13 @@ class GCNConv(MessagePassing):
 
 	def message(self,x_i:torch.Tensor,x_j:torch.Tensor, norm2:torch.Tensor):
 		inputs = torch.cat((x_i,x_j,norm2.unsqueeze(1)),dim=1)
+		print(self.f_message(inputs))
 		return self.f_message(inputs)
 			
-	def update(self, inputs: torch.Tensor):
+	def update(self, m_i:torch.Tensor, x:torch.Tensor):
+		inputs = torch.cat((m_i,x),dim=1);
 
-		print(inputs.shape)
-
-		output = self.f_update(inputs)
-		
-		print(output)
-
-		return 0
-
+		return self.f_update(inputs)+x
 
 
 
@@ -72,4 +67,24 @@ n_edges=2048
 edges_index = torch.randint(0,n,(2,n_edges),dtype=torch.long)
 x = torch.randn(n,128)
 
-test(x,edges_index)
+x_prime=test(x,edges_index)
+
+
+norm2=(x[edges_index[0]]-x[edges_index[1]]).norm(dim=1).pow(2)
+inputs = torch.cat((x[edges_index[1]],x[edges_index[0]],norm2.unsqueeze(1)),dim=1)
+m_ij=test.f_message(inputs)
+
+idx = 1
+s = 0
+for ((i,j),m) in zip(edges_index.t(),m_ij):
+	if j == idx:
+		s+= m
+
+inputs = torch.cat((s.unsqueeze(0),x[idx:idx+1]),dim=1);
+print(inputs.shape)
+res = test.f_update(inputs)+x[idx]
+
+print(x[0])
+print(x_prime[0])
+print(test.f_update(inputs).mean(),test.f_update(inputs).var())
+print((res-x_prime[0]).abs().max())
