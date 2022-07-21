@@ -93,7 +93,7 @@ class EGNN(torch.nn.Module):
 
 
 def train_once(dataloader, model, loss_f, optimizer, device="cpu"):
-		size = len(dataloader.dataset)
+		size =  int(len(dataloader.dataset)/64)
 		model.train()
 		loss = 0
 
@@ -161,7 +161,9 @@ def train_epochs(epochs, model, save_name, batch_size,
 	writer = SummaryWriter()
 	for epoch in range(epochs):
 		print(f'Epoch [{epoch+1:>3d}/{epochs:>3d}]')
-		accuracy, loss = train_once(loader, model, loss_fn, optimizer)
+		train_once(loader, model, loss_fn, optimizer)
+		accuracy, loss = test(loader, model, loss_fn)
+
 
 		writer.add_scalar("Accuracy/epoch", accuracy, epoch+1)
 		writer.add_scalar("Loss/epoch", loss, epoch+1)
