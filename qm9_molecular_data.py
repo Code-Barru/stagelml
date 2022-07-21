@@ -102,18 +102,17 @@ def train_once(dataloader, model, loss_f, optimizer, device="cpu"):
 
 			pred = model(batch)
 
-			print(batch)
+			idx_index = torch.tensor([5,8,6,7,4,15,14,13,9,12,11,10])
+			# "alpha", "gap", "homo", "lumo", "mu", "cv", "g298", "h298", "u298", "u0", "zpve"
 
-			print(batch.y.shape)
-			print(pred.shape)
 
-			loss = loss_f(pred,batch.y)
+			loss = loss_f(pred,batch.y[:,idx_index])
 
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
 
-			if batch % 100 == 0:
+			if i % 100 == 0:
 				loss = loss.item()
 				print(f"batch [{i:>5d}/{size:>5d}]")
 
@@ -151,7 +150,7 @@ def train_epochs(epochs, model, save_name, batch_size,
 	optimizer, loss_fn=torch.nn.CrossEntropyLoss()):
 
 	training_data = datasets.QM9(
-	root="data",
+		root="data",
 	)
 
 	loader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
@@ -161,7 +160,7 @@ def train_epochs(epochs, model, save_name, batch_size,
 
 	writer = SummaryWriter()
 	for epoch in range(epochs):
-		print(f'Epoch [{epoch:>3d}/{epoch:>3d}]')
+		print(f'Epoch [{epoch+1:>3d}/{epochs:>3d}]')
 		accuracy, loss = train_once(loader, model, loss_fn, optimizer)
 
 		writer.add_scalar("Accuracy/epoch", accuracy, epoch+1)
