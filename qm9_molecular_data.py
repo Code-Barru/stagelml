@@ -1,13 +1,20 @@
-from nbformat import write
+
+from math import sqrt
+from sklearn.pipeline import FeatureUnion
 import torch
 from torch.nn import Linear, Parameter, Sequential, Module
 from torch.utils.tensorboard import SummaryWriter
+import torch_cluster
+import torch_geometric
 
 from torch_geometric.loader import DataLoader
 from torch_geometric import datasets
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.glob import global_add_pool
 from torch_geometric.utils import add_self_loops
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device.")
 
 
 class Swish(Module):
@@ -51,7 +58,7 @@ class GCNConv(MessagePassing):
 		return self.f_message(inputs)
 			
 	def update(self, m_i:torch.Tensor, x:torch.Tensor):
-		inputs = torch.cat((m_i,x),dim=1);
+		inputs = torch.cat((m_i,x),dim=1)
 
 		return self.f_update(inputs)+x
 
@@ -92,7 +99,7 @@ class EGNN(torch.nn.Module):
 		return self.readout(sum_pooling)
 
 
-def train_once(dataloader, model, loss_f, optimizer, device="cpu"):
+def train_once(dataloader, model, loss_f, optimizer, mean, std):
 		size =  int(len(dataloader.dataset)/64)
 		model.train()
 		loss = 0
@@ -104,10 +111,7 @@ def train_once(dataloader, model, loss_f, optimizer, device="cpu"):
 
 			idx_index = torch.tensor([5,8,6,7,4,15,14,13,9,12,11,10])
 			# "alpha", "gap", "homo", "lumo", "mu", "cv", "g298", "h298", "u298", "u0", "zpve"
-
-
-			loss = loss_f(pred,batch.y[:,idx_index])
-
+			loss = loss_f(pred, (batch.y[:,idx_index]-mean)/std )
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
@@ -117,53 +121,62 @@ def train_once(dataloader, model, loss_f, optimizer, device="cpu"):
 				print(f"batch [{i:>5d}/{size:>5d}]")
 
 
-def test(dataloader, model, loss_f):
-	size = len(dataloader.dataset)
+def test(dataloader, model, loss_f, mean, std):
+	size = int(len(dataloader.dataset)/64)
 	num_batches = len(dataloader)
 	model.eval()
-	test_loss, correct = 0, 0
+	test_loss, accuracy = 0, 0
 
-	actual = []
-	predicted = []
+	print(f"Testing model.")
+	idx_index = torch.tensor([5,8,6,7,4,15,14,13,9,12,11,10]).to(device)
+	# "alpha", "gap", "homo", "lumo", "mu", "cv", "g298", "h298", "u298", "u0", "zpve"
 
 	with torch.no_grad():
 		for (i,batch) in enumerate(dataloader):
 
+			batch = batch.to(device)
+
 			pred = model(batch)
+			
+			batch.y = batch.y[:,idx_index]
 
-			actual.append(batch.y)
-			predicted.append(pred)
+			test_loss += loss_f(pred, (batch.y - mean) / std).item()
+			
+			pred = (pred*std) + mean
+			accuracy += (pred[:,10] - batch.y[:,10]).abs().sum() / len(dataloader.dataset)
 
-			test_loss += loss_f(pred, batch.y).item()
-			correct += (pred == batch.y).type(torch.float).sum().item()
-
-	actual = torch.cat(actual).cpu()
-	predicted = torch.cat(predicted).cpu()
+			if i%100 == 0:
+				print(f"[{i:>5d}/{size:>5d}]")
 
 	test_loss /= num_batches
-	correct /= size
 
-	return 100*correct, test_loss
+	return accuracy, test_loss
 
 
 def train_epochs(epochs, model, save_name, batch_size, 
-	optimizer, loss_fn=torch.nn.CrossEntropyLoss()):
+	optimizer, loss_fn=torch.nn.L1Loss()):
 
 	training_data = datasets.QM9(
 		root="data",
 	)
 
-	loader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
+	size = len(training_data)
+	tmp = torch.utils.data.random_split(training_data, [int(0.8 * size), size - int(0.8 * size)], generator=torch.Generator().manual_seed(10))
 
-	device = "cuda" if torch.cuda.is_available() else "cpu"
-	print(f"Using {device} device.")
+	training_loader = DataLoader(tmp[0],batch_size)
+	testing_loader = DataLoader(tmp[1],batch_size)
+
+	std, mean = calcul_standard_deviation(training_loader)
+
+	std = std.to(device)
+	mean = std.to(device)
 
 	writer = SummaryWriter()
 	for epoch in range(epochs):
 		print(f'Epoch [{epoch+1:>3d}/{epochs:>3d}]')
-		train_once(loader, model, loss_fn, optimizer)
-		accuracy, loss = test(loader, model, loss_fn)
-
+		
+		train_once(training_loader, model, loss_fn, optimizer, std, mean)
+		accuracy, loss = test(testing_loader, model, loss_fn, std, mean)
 
 		writer.add_scalar("Accuracy/epoch", accuracy, epoch+1)
 		writer.add_scalar("Loss/epoch", loss, epoch+1)
@@ -174,6 +187,21 @@ def train_epochs(epochs, model, save_name, batch_size,
 	torch.save(model.state_dict(), save_name)
 	print(f"Saved PyTorch Model state to {save_name}.")
 
-model = EGNN()
+def calcul_standard_deviation(dataloader):
+	idx_index = torch.tensor([5,8,6,7,4,15,14,13,9,12,11,10])
+	# "alpha", "gap", "homo", "lumo", "mu", "cv", "g298", "h298", "u298", "u0", "zpve"
+	tmp = []
+	for (i,batch) in enumerate(dataloader):
+		batch.y = batch.y[:,idx_index]
+		tmp.append(batch.y)
 
-train_epochs(25, model, "model.pth", 64, torch.optim.SGD(model.parameters(), lr=1e-3))
+	tmp = torch.cat(tmp,0)
+	
+	return torch.std(tmp,0), torch.mean(tmp,0)
+
+
+if __name__=="__main__":
+	model = EGNN()
+	model.to(device)
+
+	train_epochs(25, model, "model.pth", 64, torch.optim.Adam(model.parameters(), lr=1e-5))
